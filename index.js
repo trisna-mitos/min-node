@@ -27,7 +27,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
         'Content-Type': file.mimetype,
     };
 
-    minioClient.putObject('my-bucket', file.originalname, file.buffer, metaData, (err, etag) => {
+    minioClient.putObject('temp-test', file.originalname, file.buffer, metaData, (err, etag) => {
         if (err) {
             return res.status(500).send(err);
         }
@@ -37,7 +37,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
 
 app.get('/list', (req, res) => {
     const objectsList = [];
-    const stream = minioClient.listObjects('my-bucket', '', true);
+    const stream = minioClient.listObjects('temp-test', '', true);
     stream.on('data', obj => objectsList.push(obj));
     stream.on('end', () => res.send(objectsList));
     stream.on('error', err => res.status(500).send(err));
@@ -46,7 +46,7 @@ app.get('/list', (req, res) => {
 app.get('/download/:filename', (req, res) => {
     const filename = req.params.filename;
 
-    minioClient.getObject('my-bucket', filename, (err, dataStream) => {
+    minioClient.getObject('temp-test', filename, (err, dataStream) => {
         if (err) {
             return res.status(500).send(err);
         }
