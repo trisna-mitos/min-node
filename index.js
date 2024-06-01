@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const Minio = require('minio');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -14,15 +15,28 @@ const minioClient = new Minio.Client({
     secretKey: '2I8z26ChqMVCIoSMlNTkCvLusBkT1um3ve7AFOHp'
 });
 
+// Test connection to MinIO
+minioClient.bucketExists('my-bucket', (err) => {
+    if (err) {
+        console.log('Error connecting to MinIO:', err);
+    } else {
+        console.log('Connected to MinIO successfully!');
+    }
+});
+
 const upload = multer({ dest: 'uploads/' });
 
 app.post('/upload', upload.single('file'), (req, res) => {
     const file = req.file;
+    if (!file) {
+        return res.status(400).send('No file uploaded.');
+    }
     const metaData = {
         'Content-Type': file.mimetype,
     };
 
     minioClient.fPutObject('my-bucket', file.filename, file.path, metaData, (err, etag) => {
+        fs.unlinkSync(file.path);  // Delete file after upload
         if (err) {
             return res.status(500).send(err);
         }
@@ -40,11 +54,18 @@ app.get('/list', (req, res) => {
 
 app.get('/download/:filename', (req, res) => {
     const filename = req.params.filename;
-    minioClient.fGetObject('my-bucket', filename, path.join(__dirname, 'downloads', filename), (err) => {
+    const filePath = path.join(__dirname, 'downloads', filename);
+
+    minioClient.fGetObject('my-bucket', filename, filePath, (err) => {
         if (err) {
             return res.status(500).send(err);
         }
-        res.download(path.join(__dirname, 'downloads', filename));
+        res.download(filePath, (downloadErr) => {
+            if (downloadErr) {
+                return res.status(500).send(downloadErr);
+            }
+            fs.unlinkSync(filePath);  // Delete file after download
+        });
     });
 });
 
