@@ -2,7 +2,6 @@ const express = require('express');
 const multer = require('multer');
 const Minio = require('minio');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,16 +14,9 @@ const minioClient = new Minio.Client({
     secretKey: '2I8z26ChqMVCIoSMlNTkCvLusBkT1um3ve7AFOHp'
 });
 
-// Test connection to MinIO
-minioClient.bucketExists('my-bucket', (err) => {
-    if (err) {
-        console.log('Error connecting to MinIO:', err);
-    } else {
-        console.log('Connected to MinIO successfully!');
-    }
-});
-
-const upload = multer({ dest: 'uploads/' });
+// Use memory storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 app.post('/upload', upload.single('file'), (req, res) => {
     const file = req.file;
@@ -35,12 +27,11 @@ app.post('/upload', upload.single('file'), (req, res) => {
         'Content-Type': file.mimetype,
     };
 
-    minioClient.fPutObject('my-bucket', file.filename, file.path, metaData, (err, etag) => {
-        fs.unlinkSync(file.path);  // Delete file after upload
+    minioClient.putObject('my-bucket', file.originalname, file.buffer, metaData, (err, etag) => {
         if (err) {
             return res.status(500).send(err);
         }
-        res.send({ etag, filename: file.filename });
+        res.send({ etag, filename: file.originalname });
     });
 });
 
@@ -54,18 +45,13 @@ app.get('/list', (req, res) => {
 
 app.get('/download/:filename', (req, res) => {
     const filename = req.params.filename;
-    const filePath = path.join(__dirname, 'downloads', filename);
 
-    minioClient.fGetObject('my-bucket', filename, filePath, (err) => {
+    minioClient.getObject('my-bucket', filename, (err, dataStream) => {
         if (err) {
             return res.status(500).send(err);
         }
-        res.download(filePath, (downloadErr) => {
-            if (downloadErr) {
-                return res.status(500).send(downloadErr);
-            }
-            fs.unlinkSync(filePath);  // Delete file after download
-        });
+        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+        dataStream.pipe(res);
     });
 });
 
